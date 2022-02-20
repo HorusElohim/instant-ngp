@@ -16,3 +16,12 @@
 [submodule "dependencies/tiny-cuda-nn"]
 	path = dependencies/tiny-cuda-nn
 	url = https://github.com/NVlabs/tiny-cuda-nn
+[submodule "dependencies/colmap"]
+	path = dependencies/colmap
+	url = https://github.com/colmap/colmap.git
+[submodule "dependencies/ceres-solver"]
+	path = dependencies/ceres-solver
+	url = https://ceres-solver.googlesource.com/ceres-solver
+[submodule "addons/colmap"]
+	path = addons/colmap
+	url = https://github.com/colmap/colmap.git

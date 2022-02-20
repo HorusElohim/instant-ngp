@@ -12,3 +12,7 @@
 __pycache__
 .DS_Store
 imgui.ini
+/cmake-build-release
+/cmake-build-debug
+/.idea
+*.ppm
