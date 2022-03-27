@@ -8,6 +8,13 @@
 
 cmake_minimum_required(VERSION 3.19)
 
+if (CMAKE_VERSION EQUAL "3.23.0-rc1")
+    message(FATAL_ERROR
+            "Installed CMake version ${CMAKE_VERSION} is unable to build this project. "
+            "You must install the latest stable version 3.22.2 instead."
+            )
+endif ()
+
 PROJECT(instant-ngp
         VERSION 1.0
         DESCRIPTION "Instant neural graphics primitives"
@@ -113,15 +120,16 @@ if (NGP_BUILD_WITH_GUI)
     )
 
     include_directories("dependencies/glfw/include")
+    include_directories("dependencies/imgui")
 
     #############
     # GL3W/GLEW #
     #############
     if (MSVC)
-        include_directories("dependencies/imgui/gl3w")
-        link_directories("dependencies/imgui")
-        set(GL_SOURCES "dependencies/imgui/gl3w/GL/gl3w.c")
-        set(GL_LIBRARIES $<TARGET_OBJECTS:glfw_objects>)
+        include_directories("dependencies/gl3w")
+        link_directories("dependencies")
+        set(GL_SOURCES "dependencies/gl3w/GL/gl3w.c")
+        set(GL_LIBRARIES opengl32 $<TARGET_OBJECTS:glfw_objects>)
     else ()
         find_package(GLEW REQUIRED)
         include_directories(${GLEW_INCLUDE_DIRS})
@@ -130,16 +138,16 @@ if (NGP_BUILD_WITH_GUI)
 
     set(GL_SOURCES
             ${GL_SOURCES}
-            dependencies/imgui/ImGuizmo.cpp
+            dependencies/imguizmo/ImGuizmo.cpp
             dependencies/imgui/imgui.cpp
-            dependencies/imgui/imgui_impl_glfw.cpp
-            dependencies/imgui/imgui_impl_opengl3.cpp
+            dependencies/imgui/backends/imgui_impl_glfw.cpp
+            dependencies/imgui/backends/imgui_impl_opengl3.cpp
             dependencies/imgui/imgui_draw.cpp
             dependencies/imgui/imgui_tables.cpp
             dependencies/imgui/imgui_widgets.cpp
             )
 
-    add_definitions(-DNGP_GUI)
+    list(APPEND NGP_DEFINITIONS -DNGP_GUI)
 endif (NGP_BUILD_WITH_GUI)
 
 ###########
@@ -159,12 +167,6 @@ endif ()
 #########
 # OPTIX #
 #########
-find_package(OptiX)
-# set OptiX_INSTALL_DIR via your environment if it's not found automatically
-
-##########
-# Optix #
-##########
 include_directories("include/optix")
 
 ##########
@@ -183,7 +185,6 @@ set(TCNN_BUILD_EXAMPLES OFF)
 add_subdirectory(dependencies/tiny-cuda-nn)
 include_directories("dependencies/tiny-cuda-nn/include")
 include_directories("dependencies/tiny-cuda-nn/dependencies")
-add_definitions(${TCNN_DEFINITIONS})
 
 ##############
 # tinylogger #
@@ -195,7 +196,7 @@ include_directories("dependencies/tinylogger")
 # Program
 ###############################################################################
 
-add_definitions(-DNGP_VERSION="${NGP_VERSION}")
+list(APPEND NGP_DEFINITIONS -DNGP_VERSION="${NGP_VERSION}")
 
 include_directories("include")
 
@@ -225,14 +226,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR})
 
 get_filename_component(CUDA_COMPILER_BIN "${CMAKE_CUDA_COMPILER}" DIRECTORY)
 
+
+message("-- Add OptiX")
 add_library(optix_program OBJECT
         src/optix/pathescape.cu
         src/optix/raystab.cu
-        src/optix/raytrace.cu)
+        src/optix/raytrace.cu
+        )
 
 set_target_properties(optix_program PROPERTIES CUDA_PTX_COMPILATION ON)
 set_target_properties(optix_program PROPERTIES CUDA_ARCHITECTURES OFF)
-target_compile_definitions(optix_program PUBLIC ${TCNN_DEFINITIONS})
+target_compile_definitions(optix_program PUBLIC ${NGP_DEFINITIONS} -DTCNN_MIN_GPU_ARCH=0)
 target_compile_options(optix_program PUBLIC "--expt-relaxed-constexpr")
 
 # OptiX programs will be compiled as PTX and packaged
@@ -263,15 +267,18 @@ add_custom_command(
 
 list(APPEND SOURCES ${OPTIX_PTX_HEADER})
 
+
 add_library(ngp STATIC ${SOURCES})
 set_target_properties(ngp PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 set_target_properties(ngp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_link_libraries(ngp PUBLIC ${GL_LIBRARIES} tiny-cuda-nn)
 target_compile_options(ngp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
+target_compile_definitions(ngp PUBLIC ${NGP_DEFINITIONS} ${TCNN_DEFINITIONS})
 
 add_executable(testbed src/main.cu)
 target_link_libraries(testbed PUBLIC ngp)
 target_compile_options(testbed PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
+target_compile_definitions(testbed PUBLIC ${NGP_DEFINITIONS} ${TCNN_DEFINITIONS})
 
 if (Python_FOUND)
     add_library(pyngp SHARED src/python_api.cu)
@@ -279,7 +286,7 @@ if (Python_FOUND)
     set_target_properties(pyngp PROPERTIES CUDA_VISIBILITY_PRESET "hidden")
     target_link_libraries(pyngp PUBLIC ngp ${PYTHON_LIBRARIES} pybind11::module)
     target_compile_options(pyngp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
-    target_compile_definitions(pyngp PUBLIC -DNGP_PYTHON)
+    target_compile_definitions(pyngp PUBLIC -DNGP_PYTHON ${NGP_DEFINITIONS} ${TCNN_DEFINITIONS})
     pybind11_extension(pyngp)
 
     if (MSVC)

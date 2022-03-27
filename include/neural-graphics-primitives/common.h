@@ -15,6 +15,7 @@
 
 #pragma once
 
+
 #include <tinylogger/tinylogger.h>
 
 // Eigen uses __device__ __host__ on a bunch of defaulted constructors.
@@ -57,19 +58,6 @@ using Vector2i32 = Eigen::Matrix<uint32_t, 2, 1>;
 using Vector3i16 = Eigen::Matrix<uint16_t, 3, 1>;
 using Vector4i16 = Eigen::Matrix<uint16_t, 4, 1>;
 using Vector4i32 = Eigen::Matrix<uint32_t, 4, 1>;
-
-static constexpr uint32_t BATCH_SIZE_MULTIPLE = 256;
-
-class ScopeGuard {
-public:
-    ScopeGuard(const std::function<void()>& callback) : mCallback{callback} {}
-    ScopeGuard(std::function<void()>&& callback) : mCallback{std::move(callback)} {}
-    ScopeGuard(const ScopeGuard& other) = delete;
-    ScopeGuard(ScopeGuard&& other) { mCallback = std::move(other.mCallback); other.mCallback = {}; }
-    ~ScopeGuard() { mCallback(); }
-private:
-    std::function<void()> mCallback;
-};
 
 enum class EMeshRenderMode : int {
 	Off,
@@ -156,13 +144,20 @@ struct Ray {
 	Eigen::Vector3f d;
 };
 
+struct TrainingXForm {
+	Eigen::Matrix<float, 3, 4> start;
+	Eigen::Matrix<float, 3, 4> end;
+};
+
+enum class ECameraDistortionMode : int {
+	None,
+	Iterative,
+	FTheta,
+};
+
 struct CameraDistortion {
-	float params[4] = {};
-#ifdef __NVCC__
-	inline __host__ __device__ bool is_zero() const {
-		return params[0] == 0.0f && params[1] == 0.0f && params[2] == 0.0f && params[3] == 0.0f;
-	}
-#endif
+	ECameraDistortionMode mode = ECameraDistortionMode::None;
+	float params[7] = {};
 };
 
 #ifdef __NVCC__

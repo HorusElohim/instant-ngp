@@ -30,6 +30,14 @@ using namespace tcnn;
 
 NGP_NAMESPACE_BEGIN
 
+Testbed::NetworkDims Testbed::network_dims_image() const {
+	NetworkDims dims;
+	dims.n_input = 2;
+	dims.n_output = 3;
+	dims.n_pos = 2;
+	return dims;
+}
+
 template <uint32_t base>
 __host__ __device__ float halton(size_t idx) {
 	float f = 1;
@@ -144,7 +152,7 @@ __global__ void shade_kernel_image(Vector2i resolution, const Vector2f* __restri
 
 	uint32_t idx = x + resolution.x() * y;
 
-	auto uv = positions[idx];
+	const Vector2f uv = positions[idx];
 	if (uv.x() < 0.0f || uv.x() > 1.0f || uv.y() < 0.0f || uv.y() > 1.0f) {
 		frame_buffer[idx] = Array4f::Zero();
 		return;
@@ -178,7 +186,7 @@ __global__ void eval_image_kernel_and_snap(uint32_t n_elements, const T* __restr
 
 	auto read_val = [&](int x, int y) {
 		auto val = ((tcnn::vector_t<T, 4>*)texture)[y * resolution.x() + x];
-		auto result = Array4f(val[0], val[1], val[2], val[3]);
+		Array4f result{val[0], val[1], val[2], val[3]};
 		if (!linear_colors) {
 			result.head<3>() = linear_to_srgb(result.head<3>());
 		}
@@ -194,10 +202,10 @@ __global__ void eval_image_kernel_and_snap(uint32_t n_elements, const T* __restr
 	} else {
 		pos = (pos.cwiseProduct(resolution.cast<float>()) - Vector2f::Constant(0.5f)).cwiseMax(0.0f).cwiseMin(resolution.cast<float>() - Vector2f::Constant(1.0f + 1e-4f));
 
-		Vector2i pos_int = pos.cast<int>();
-		auto weight = pos - pos_int.cast<float>();
+		const Vector2i pos_int = pos.cast<int>();
+		const Vector2f weight = pos - pos_int.cast<float>();
 
-		Vector2i idx = pos_int.cwiseMin(resolution - Vector2i::Constant(2)).cwiseMax(0);
+		const Vector2i idx = pos_int.cwiseMin(resolution - Vector2i::Constant(2)).cwiseMax(0);
 
 		val =
 			(1 - weight.x()) * (1 - weight.y()) * read_val(idx.x(), idx.y()) +
@@ -304,7 +312,7 @@ void Testbed::render_image(CudaRenderBuffer& render_buffer, cudaStream_t stream)
 
 	// Make sure we have enough memory reserved to render at the requested resolution
 	size_t n_pixels = (size_t)res.x() * res.y();
-	uint32_t n_elements = next_multiple((uint32_t)n_pixels, BATCH_SIZE_MULTIPLE);
+	uint32_t n_elements = next_multiple((uint32_t)n_pixels, tcnn::batch_size_granularity);
 	m_image.render_coords.enlarge(n_elements);
 	m_image.render_out.enlarge(n_elements);
 
